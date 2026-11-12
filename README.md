@@ -2,6 +2,15 @@
 
 A self-hosted home server I built from a spare ASUS desktop to learn system administration, networking and containers. It runs Proxmox VE and hosts DNS filtering, remote access, monitoring and a fitness tracker for my phone.
 
+## Projects
+
+| Project | Status |
+|---|---|
+| Proxmox host with Pi-hole, Tailscale, Uptime Kuma and Docker (this page) | ✅ Running |
+| [PowerShell onboarding and offboarding scripts](powershell-onboarding/) | 📝 Written, not yet tested |
+| [Windows domain lab](windows-domain-lab/): AD, DNS, DHCP, GPO, file shares | 🗓️ Planned |
+| [Backups and restore testing](backups/) | 🗓️ Planned |
+
 ## Architecture
 
 ```
@@ -57,6 +66,8 @@ A self-hosted home server I built from a spare ASUS desktop to learn system admi
 
 **Phone app said "sync server unreachable".** The website worked, but the PowerSync service kept restarting. Reading `docker compose logs` turned up a database authentication error. I ran the skipped setup step (`manage.py setup-powersync-storage`), then restarted nginx, which had cached the old address of the crashing service. After that, all six containers stayed up and the app synced.
 
+**Whole lab offline after a power cut.** The router was back but nothing in the lab answered. A ping sweep of the subnet from my laptop showed the Proxmox host and all its containers missing, not just one service. On the server's console, `ip -br a` showed the physical interface `nic0` as down, and pinging the router got 0 replies. The Ethernet cable had come out of the back of the router. After reseating it, every service came back. To make it survive the next outage on its own, the plan is to set the BIOS to power on after AC loss and enable "Start at boot" on each container.
+
 **Monitoring Proxmox's HTTPS UI.** Uptime Kuma flagged Proxmox as down because of its self-signed certificate. I allowed that certificate for the internal check only.
 
 ## Security choices
@@ -67,6 +78,7 @@ A self-hosted home server I built from a spare ASUS desktop to learn system admi
 
 ## Next steps
 
-- Set up scheduled Proxmox backups and test a restore
-- Build a Windows Server VM with Active Directory, plus a domain-joined Windows client
+- Set up scheduled Proxmox backups and test a restore ([plan](backups/))
+- Build the Windows domain lab ([plan](windows-domain-lab/)) and test the [onboarding scripts](powershell-onboarding/) in it
+- Power on after AC loss in the BIOS, and "Start at boot" for every container
 - Add a reverse proxy (Nginx Proxy Manager) with local DNS names
