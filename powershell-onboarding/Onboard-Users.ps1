@@ -22,6 +22,7 @@
 
 .PARAMETER HomeRoot
     UNC path of the share that holds home folders, e.g. \\DC01\Home
+    Optional: leave it out to skip home folders.
 
 .PARAMETER ReportPath
     Where the summary CSV is written.
@@ -36,13 +37,15 @@
 
 .NOTES
     Requires the ActiveDirectory module (RSAT) and rights to create users.
-    Status: written, not yet run against a live domain. See README.md.
+    Status: unit-tested with Pester (see tests/), not yet run against a live domain.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '',
+    Justification = 'The temporary password is randomly generated here and must be known in plain text so it can be handed to the new hire.')]
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory)] [ValidateScript({ Test-Path $_ })] [string] $CsvPath,
     [Parameter(Mandatory)] [string] $DefaultOU,
-    [Parameter(Mandatory)] [string] $HomeRoot,
+    [string] $HomeRoot,
     [string] $ReportPath = ".\onboarding-report-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv",
     [switch] $ExportCredentials
 )
@@ -57,7 +60,7 @@ function ConvertTo-FilterValue([string] $value) {
     $value -replace "'", "''"
 }
 
-function New-TempPassword {
+function Get-TempPassword {
     # 16 characters drawn from all four character classes, skipping look-alikes (0/O, 1/l/I).
     $sets = @('ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!@#$%^&*?')
     $chars = @(foreach ($s in $sets) { $s[(Get-Random -Maximum $s.Length)] })
@@ -71,12 +74,17 @@ function Get-UniqueSam([string] $first, [string] $last) {
     $base = ($first.Substring(0, 1) + $last).ToLower() -replace '[^a-z0-9]', ''
     $base = $base.Substring(0, [Math]::Min(20, $base.Length))
     $candidate, $n = $base, 1
-    while (Get-ADUser -Filter "SamAccountName -eq '$candidate'") {
+    # Also check names picked earlier in this run: they don't exist in AD yet during
+    # -WhatIf, and may not have replicated yet otherwise.
+    while ($usedSams.Contains($candidate) -or (Get-ADUser -Filter "SamAccountName -eq '$candidate'")) {
         $n++
         $candidate = $base.Substring(0, [Math]::Min($base.Length, 20 - "$n".Length)) + $n
     }
+    [void] $usedSams.Add($candidate)
     $candidate
 }
+
+$usedSams = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
 $report = [System.Collections.Generic.List[object]]::new()
 $creds = [System.Collections.Generic.List[object]]::new()
@@ -102,7 +110,7 @@ foreach ($row in Import-Csv -Path $CsvPath) {
         $ou = if ($hasDeptOu) { $deptOu } else { $DefaultOU }
         $entry.Sam, $entry.OU = $sam, $ou
 
-        $password = New-TempPassword
+        $password = Get-TempPassword
         if ($PSCmdlet.ShouldProcess("$sam@$upnSuffix", "Create user in $ou")) {
             New-ADUser -Name "$first $last" -GivenName $first -Surname $last `
                 -DisplayName "$first $last" -SamAccountName $sam `
@@ -126,8 +134,8 @@ foreach ($row in Import-Csv -Path $CsvPath) {
         }
 
         # Inheritance is removed so other users can't browse into the folder.
-        $homePath = Join-Path $HomeRoot $sam
-        if ($PSCmdlet.ShouldProcess($homePath, 'Create home folder and set permissions')) {
+        $homePath = if ($HomeRoot) { [System.IO.Path]::Combine($HomeRoot, $sam) }
+        if ($homePath -and $PSCmdlet.ShouldProcess($homePath, 'Create home folder and set permissions')) {
             New-Item -ItemType Directory -Path $homePath -Force | Out-Null
             $acl = Get-Acl $homePath
             $acl.SetAccessRuleProtection($true, $false)
@@ -152,7 +160,8 @@ foreach ($row in Import-Csv -Path $CsvPath) {
     $report.Add([pscustomobject]$entry)
 }
 
-$report | Export-Csv -Path $ReportPath -NoTypeInformation
+# The report is written even during -WhatIf: it's the point of a dry run.
+$report | Export-Csv -Path $ReportPath -NoTypeInformation -WhatIf:$false
 $report | Format-Table -AutoSize
 
 if ($ExportCredentials -and $creds.Count -and -not $WhatIfPreference) {
@@ -161,8 +170,8 @@ if ($ExportCredentials -and $creds.Count -and -not $WhatIfPreference) {
     Write-Warning "Temporary passwords written to $credPath. Hand them out securely, then delete the file."
 }
 
-Write-Host "`nSummary written to $ReportPath"
-Write-Host ("Created: {0}   Skipped: {1}   Failed: {2}" -f
+Write-Information "`nSummary written to $ReportPath" -InformationAction Continue
+Write-Information ("Created: {0}   Skipped: {1}   Failed: {2}" -f
     @($report | Where-Object Result -Match '^(Created|WhatIf)').Count,
     @($report | Where-Object Result -Match '^Skipped').Count,
-    @($report | Where-Object Result -Match '^Failed').Count)
+    @($report | Where-Object Result -Match '^Failed').Count) -InformationAction Continue

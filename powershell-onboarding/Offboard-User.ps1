@@ -33,7 +33,7 @@
 
 .NOTES
     Requires the ActiveDirectory module (RSAT).
-    Status: written, not yet run against a live domain. See README.md.
+    Status: unit-tested with Pester (see tests/), not yet run against a live domain.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -48,12 +48,17 @@ begin {
     $report = [System.Collections.Generic.List[object]]::new()
     $stamp = "Offboarded $(Get-Date -Format 'yyyy-MM-dd') by $env:USERNAME"
 
-    function New-RandomPassword {
+    function Get-RandomSecurePassword {
+        # Built straight into a SecureString: nobody needs to know this password,
+        # so it never exists as plain text.
         $bytes = [byte[]]::new(24)
         # Create().GetBytes works in both Windows PowerShell 5.1 and PowerShell 7.
         [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $secure = [System.Security.SecureString]::new()
         # Base64 plus a fixed suffix guarantees every character class is present.
-        [Convert]::ToBase64String($bytes) + 'a1!A'
+        foreach ($ch in ([Convert]::ToBase64String($bytes) + 'a1!A').ToCharArray()) { $secure.AppendChar($ch) }
+        $secure.MakeReadOnly()
+        $secure
     }
 }
 
@@ -66,8 +71,7 @@ process {
 
             if ($PSCmdlet.ShouldProcess($sam, 'Disable account and reset password')) {
                 Disable-ADAccount -Identity $user
-                Set-ADAccountPassword -Identity $user -Reset `
-                    -NewPassword (ConvertTo-SecureString (New-RandomPassword) -AsPlainText -Force)
+                Set-ADAccountPassword -Identity $user -Reset -NewPassword (Get-RandomSecurePassword)
             }
 
             # Group names go into the report before removal, so access can be restored if needed.
@@ -84,7 +88,7 @@ process {
             }
 
             if ($ArchiveHomeRoot -and $user.HomeDirectory -and (Test-Path $user.HomeDirectory)) {
-                $dest = Join-Path $ArchiveHomeRoot $sam
+                $dest = [System.IO.Path]::Combine($ArchiveHomeRoot, $sam)
                 if ($PSCmdlet.ShouldProcess($user.HomeDirectory, "Move to $dest")) {
                     Move-Item -Path $user.HomeDirectory -Destination $dest
                     Set-ADUser -Identity $user -Clear HomeDirectory, HomeDrive
@@ -111,7 +115,8 @@ process {
 }
 
 end {
-    $report | Export-Csv -Path $ReportPath -NoTypeInformation
+    # The report is written even during -WhatIf: it's the point of a dry run.
+    $report | Export-Csv -Path $ReportPath -NoTypeInformation -WhatIf:$false
     $report | Format-Table Sam, Name, Result -AutoSize
-    Write-Host "Summary (including removed groups) written to $ReportPath"
+    Write-Information "Summary (including removed groups) written to $ReportPath" -InformationAction Continue
 }

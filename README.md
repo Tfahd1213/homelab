@@ -7,7 +7,7 @@ A self-hosted home server I built from a spare ASUS desktop to learn system admi
 | Project | Status |
 |---|---|
 | Proxmox host with Pi-hole, Tailscale, Uptime Kuma and Docker (this page) | ✅ Running |
-| [PowerShell onboarding and offboarding scripts](powershell-onboarding/) | 📝 Written, not yet tested |
+| [PowerShell onboarding and offboarding scripts](powershell-onboarding/) | 🧪 35 unit tests passing; live domain test pending |
 | [Windows domain lab](windows-domain-lab/): AD, DNS, DHCP, GPO, file shares | 🗓️ Planned |
 | [Backups and restore testing](backups/) | 🗓️ Planned |
 
