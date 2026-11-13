@@ -8,7 +8,7 @@ A self-hosted home server I built from a spare ASUS desktop to learn system admi
 |---|---|
 | Proxmox host with Pi-hole, Tailscale, Uptime Kuma and Docker (this page) | ✅ Running |
 | [PowerShell onboarding and offboarding scripts](powershell-onboarding/) | 🧪 35 unit tests passing; live domain test pending |
-| [Windows domain lab](windows-domain-lab/): AD, DNS, DHCP, GPO, file shares | 🗓️ Planned |
+| [Windows domain lab](windows-domain-lab/): AD, DNS, DHCP, GPO, file shares | 🚧 In progress: lab network and Windows Server VM built |
 | [Backups and restore testing](backups/) | 🗓️ Planned |
 
 ## Architecture
@@ -79,6 +79,6 @@ A self-hosted home server I built from a spare ASUS desktop to learn system admi
 ## Next steps
 
 - Set up scheduled Proxmox backups and test a restore ([plan](backups/))
-- Build the Windows domain lab ([plan](windows-domain-lab/)) and test the [onboarding scripts](powershell-onboarding/) in it
+- Finish the Windows domain lab ([progress](windows-domain-lab/)): promote DC01, add a client, then test the [onboarding scripts](powershell-onboarding/) in it
 - Power on after AC loss in the BIOS, and "Start at boot" for every container
 - Add a reverse proxy (Nginx Proxy Manager) with local DNS names
